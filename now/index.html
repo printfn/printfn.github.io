@@ -1,0 +1,56 @@
+<html>
+<head>
+
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<title>Now</title>
+
+<style>
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+    background-color: #115;
+}
+#wrap {
+    margin: 0;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    -ms-transform: translate(-50%, -50%);
+    transform: translate(-50%, -50%);
+}
+#h {
+    text-align: center;
+    color: white;
+    white-space: nowrap;
+}
+</style>
+
+</head>
+<body>
+
+<div id="wrap">
+    <h1 id="h">
+        <span id="now"></span>
+    </h1>
+</div>
+
+<script>
+function update() {
+    let d = new Date();
+    let fraction = (((d.getUTCMilliseconds() / 1000 + d.getUTCSeconds()) / 60 + d.getUTCMinutes())
+        / 60 + d.getUTCHours()) / 24 * 100;
+    let out = d.getUTCFullYear();
+    out += '-' + (d.getUTCMonth() + 1).toString().padStart(2, '0');
+    out += '-' + d.getUTCDate().toString().padStart(2, '0');
+    out += '@' + fraction.toFixed(3);
+    document.getElementById('now').innerHTML = out;
+    window.requestAnimationFrame(update);
+}
+
+window.onload = update;
+window.requestAnimationFrame(update);
+</script>
+
+</body>
+</html>
