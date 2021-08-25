@@ -66,7 +66,6 @@ function computeHz(ticks, amount) {
 }
 
 function update() {
-    // I want to compute with 0, 1, 2, 3, 4, 4, 4, 4, 4, 4
     let hz = computeHz(ticks, Math.min(AMOUNT, ticks.length));
     let text_hz = '-- Hz';
     let text_bpm =  '-- beats per minute';
