@@ -1,27 +1,28 @@
+<!DOCTYPE html>
 <html>
 <head>
 
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-<title>Now</title>
+<title>Decimal Time</title>
 
 <style>
 body {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
     background-color: #115;
+    color: white;
 }
 #wrap {
-    margin: 0;
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    -ms-transform: translate(-50%, -50%);
-    transform: translate(-50%, -50%);
+    margin: auto;
+    max-width: 800px;
+    padding: 10px;
 }
-#h {
+.title {
     text-align: center;
-    color: white;
+}
+.time {
+    text-align: center;
     white-space: nowrap;
 }
 </style>
@@ -30,26 +31,97 @@ body {
 <body>
 
 <div id="wrap">
-    <h1 id="h">
-        <span id="now"></span>
+    <h1 class="title">Decimal Time</h1>
+
+    <h2 class="time">
+        <span id="now-global"></span>
+    </h1>
+    <h2 class="time">
+        <span id="now-local"></span>
     </h1>
 </div>
 
 <script>
-function update() {
+
+// Each day is divided into 1000 beats, and each beat into 1000 pulses
+// There are 20 timezones, going +0, +50, +100, ..., +950
+
+function now(tz) {
     let d = new Date();
-    let fraction = (((d.getUTCMilliseconds() / 1000 + d.getUTCSeconds()) / 60 + d.getUTCMinutes())
+    let beats = (((d.getUTCMilliseconds() / 1000 + d.getUTCSeconds()) / 60 + d.getUTCMinutes())
         / 60 + d.getUTCHours()) / 24 * 1000;
-    let out = d.getUTCFullYear();
-    out += '-' + (d.getUTCMonth() + 1).toString().padStart(2, '0');
-    out += '-' + d.getUTCDate().toString().padStart(2, '0');
-    out += '@' + fraction.toFixed(3);
-    document.getElementById('now').innerHTML = out;
+    let res = {
+        year: d.getUTCFullYear(),
+        month: d.getUTCMonth() + 1,
+        day: d.getUTCDate(),
+        beats,
+        tz,
+        print: () => {
+            let year = res.year;
+            let month = res.month.toString().padStart(2, '0');
+            let day = res.day.toString().padStart(2, '0');
+            let beats = res.beats.toFixed(3);
+            let tz = '';
+            if (res.tz !== null) {
+                tz = '+' + res.tz;
+            }
+            return `${year}-${month}-${day}@${beats}${tz}`;
+        }
+    };
+    if (tz !== null) {
+        res.beats -= tz;
+        if (res.beats < 0) {
+            res.beats = res.beats + 1000;
+            --res.day;
+        }
+        // TODO fix date
+    }
+    return res;
+}
+
+function update() {
+    document.getElementById('now-global').innerHTML = now(null).print();
     window.requestAnimationFrame(update);
 }
 
-window.onload = update;
-window.requestAnimationFrame(update);
+function localMidnight(lonDegrees) {
+    if (lonDegrees < -180 || lonDegrees > 180) {
+        throw new Error('longitude out of range');
+    }
+    return (lonDegrees + 360) % 360 / 360 * 1000;
+}
+
+function localTimes(lonDegrees) {
+    let midnight = localMidnight(lonDegrees);
+    let morning = (midnight + 300) % 1000;
+    let noon = (midnight + 500) % 1000;
+    let evening = (midnight + 800) % 1000;
+    return `Midnight: @${midnight.toFixed(0)}
+Morning: @${morning.toFixed(0)}
+Noon: @${noon.toFixed(0)}
+Evening: @${evening.toFixed(0)}`;
+}
+
+window.onload = () => {
+    tests();
+    window.requestAnimationFrame(update);
+};
+
+console.log(localTimes(174.7787));
+
+function tests() {
+    function assert(bool) {
+        if (!bool) throw new Error("Assertion failed");
+    }
+    assert(localMidnight(0) == 0);
+    assert(localMidnight(180) == 500);
+    assert(localMidnight(90) == 250);
+    assert(localMidnight(45) == 125);
+    assert(localMidnight(-180) == 500);
+    assert(localMidnight(-90) == 750);
+    assert(localMidnight(-45) == 875);
+}
+
 </script>
 
 </body>
