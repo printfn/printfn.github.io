@@ -39,7 +39,7 @@ body {
 function update() {
     let d = new Date();
     let fraction = (((d.getUTCMilliseconds() / 1000 + d.getUTCSeconds()) / 60 + d.getUTCMinutes())
-        / 60 + d.getUTCHours()) / 24 * 100;
+        / 60 + d.getUTCHours()) / 24 * 1000;
     let out = d.getUTCFullYear();
     out += '-' + (d.getUTCMonth() + 1).toString().padStart(2, '0');
     out += '-' + d.getUTCDate().toString().padStart(2, '0');
