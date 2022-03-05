@@ -9,7 +9,9 @@
 
 <style>
 body {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+        Helvetica, Arial, sans-serif, "Apple Color Emoji",
+        "Segoe UI Emoji", "Segoe UI Symbol";
     background-color: #115;
     color: white;
 }
@@ -24,6 +26,20 @@ body {
 .time {
     text-align: center;
     white-space: nowrap;
+    white-space-collapse: discard;
+}
+.local-times {
+    margin: auto;
+    text-align: center;
+}
+.local-time-desc {
+    text-align: right;
+}
+.local-time-val {
+    text-align: left;
+}
+.hidden {
+    display: none;
 }
 </style>
 
@@ -34,92 +50,137 @@ body {
     <h1 class="title">Decimal Time</h1>
 
     <h2 class="time">
-        <span id="now-global"></span>
+        <span id="current-year"></span>-<span id="current-month"></span>-<span id="current-day"></span>@<span id="current-beats"></span>:<span id="current-pulses"></span>
     </h1>
-    <h2 class="time">
-        <span id="now-local"></span>
-    </h1>
+    <h3 id="local-times-header" class="local-times hidden">
+        Local Times
+    </h3>
+    <table id="local-times-table" class="local-times hidden">
+        <tr>
+            <td class="local-time-desc">Midnight:</td>
+            <td class="local-time-val" id="local-midnight"></td>
+        </tr>
+        <tr>
+            <td class="local-time-desc">Morning:</td>
+            <td class="local-time-val" id="local-morning"></td>
+        </tr>
+        <tr>
+            <td class="local-time-desc">Noon:</td>
+            <td class="local-time-val" id="local-noon"></td>
+        </tr>
+        <tr>
+            <td class="local-time-desc">Evening:</td>
+            <td class="local-time-val" id="local-evening"></td>
+        </tr>
+    </table>
+    <p id="local-times-btn-wrap" class="local-times">
+        <input id="local-times-btn" type="button"
+            id="updateLocalTimes()"
+            value="Get local times from current location">
+    </p>
 </div>
 
 <script>
 
 // Each day is divided into 1000 beats, and each beat into 1000 pulses
-// There are 20 timezones, going +0, +50, +100, ..., +950
 
-function now(tz) {
+let cache = {};
+function setContents(id, newValue, updateFn = null) {
+    if (cache[id] == newValue) return;
+    cache[id] = newValue;
+    if (updateFn) {
+        updateFn(newValue);
+    } else {
+        document.getElementById(id).innerHTML = newValue;
+    }
+}
+
+function update() {
     let d = new Date();
-    let beats = (((d.getUTCMilliseconds() / 1000 + d.getUTCSeconds()) / 60 + d.getUTCMinutes())
+    let beatsNum = (((d.getUTCMilliseconds() / 1000 + d.getUTCSeconds())
+        / 60 + d.getUTCMinutes())
         / 60 + d.getUTCHours()) / 24 * 1000;
-    let res = {
+    let date = {
         year: d.getUTCFullYear(),
         month: d.getUTCMonth() + 1,
         day: d.getUTCDate(),
-        beats,
-        tz,
-        print: () => {
-            let year = res.year;
-            let month = res.month.toString().padStart(2, '0');
-            let day = res.day.toString().padStart(2, '0');
-            let beats = res.beats.toFixed(3);
-            let tz = '';
-            if (res.tz !== null) {
-                tz = '+' + res.tz;
-            }
-            return `${year}-${month}-${day}@${beats}${tz}`;
-        }
+        beats: beatsNum,
     };
-    if (tz !== null) {
-        res.beats -= tz;
-        if (res.beats < 0) {
-            res.beats = res.beats + 1000;
-            --res.day;
-        }
-        // TODO fix date
+    setContents('current-year', date.year);
+    let month = date.month.toString().padStart(2, '0');
+    setContents('current-month', month);
+    let day = date.day.toString().padStart(2, '0');
+    setContents('current-day', day);
+    // make sure not to round these values
+    let beats = Math.floor(date.beats).toString().padStart(3, '0');
+    setContents('current-beats', beats);
+    let pulses = Math.floor(date.beats * 1000 % 1000).toString().padStart(3, '0');
+    setContents('current-pulses', pulses);
+
+    setContents('title',
+        `${date.year}-${month}-${day}@${beats}`,
+        val => document.title = val);
+
+    window.requestAnimationFrame(update);
+}
+
+function localTimeConv(lonDegrees, offset = 0) {
+    if (lonDegrees < -180 || lonDegrees > 180) {
+        throw new Error('longitude out of range');
+    }
+    let res = lonDegrees / 360 * 1000;
+    res += offset;
+    while (res >= 1000) {
+        res -= 1000;
+    }
+    while (res < 0) {
+        res += 1000;
     }
     return res;
 }
 
-function update() {
-    document.getElementById('now-global').innerHTML = now(null).print();
-    window.requestAnimationFrame(update);
-}
-
-function localMidnight(lonDegrees) {
-    if (lonDegrees < -180 || lonDegrees > 180) {
-        throw new Error('longitude out of range');
-    }
-    return (lonDegrees + 360) % 360 / 360 * 1000;
-}
-
 function localTimes(lonDegrees) {
-    let midnight = localMidnight(lonDegrees);
-    let morning = (midnight + 300) % 1000;
-    let noon = (midnight + 500) % 1000;
-    let evening = (midnight + 800) % 1000;
-    return `Midnight: @${midnight.toFixed(0)}
-Morning: @${morning.toFixed(0)}
-Noon: @${noon.toFixed(0)}
-Evening: @${evening.toFixed(0)}`;
+    let timeStr = offset => {
+        // these values are rounded to the nearest integer
+        return '@' + localTimeConv(lonDegrees, offset).toFixed(0).padStart(3, '0');
+    }
+    setContents('local-midnight', timeStr(0));
+    setContents('local-morning', timeStr(250));
+    setContents('local-noon', timeStr(500));
+    setContents('local-evening', timeStr(750));
 }
 
 window.onload = () => {
     tests();
+    document.getElementById('local-times-btn').addEventListener('click', () => {
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(updatePosition);
+        } else {
+            alert("Geolocation is not supported by this browser");
+        }
+    });
     window.requestAnimationFrame(update);
 };
 
-console.log(localTimes(174.7787));
+function updatePosition(position) {
+    localTimes(position.coords.longitude);
+    document.getElementById('local-times-btn-wrap').classList.add('hidden');
+    document.getElementById('local-times-header').classList.remove('hidden');
+    document.getElementById('local-times-table').classList.remove('hidden');
+}
 
 function tests() {
     function assert(bool) {
         if (!bool) throw new Error("Assertion failed");
     }
-    assert(localMidnight(0) == 0);
-    assert(localMidnight(180) == 500);
-    assert(localMidnight(90) == 250);
-    assert(localMidnight(45) == 125);
-    assert(localMidnight(-180) == 500);
-    assert(localMidnight(-90) == 750);
-    assert(localMidnight(-45) == 875);
+    assert(localTimeConv(0) == 0);
+    assert(localTimeConv(180) == 500);
+    assert(localTimeConv(90) == 250);
+    assert(localTimeConv(45) == 125);
+    assert(localTimeConv(-180) == 500);
+    assert(localTimeConv(-90) == 750);
+    assert(localTimeConv(-45) == 875);
+    assert(localTimeConv(-0.1) < 1000 && localTimeConv(-0.1) > 999);
 }
 
 </script>
