@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html>
+<head>
+
+<meta charset="utf-8">
+<title>Hex Quiz</title>
+
+</head>
+<body>
+
+<p><span id="question"></span></p>
+<label id="question2" for="answer"></label>
+<input id="answer" autofocus type="text">
+<p>
+    correct: <span id="stats"></span>
+</p>
+
+<script>
+
+window.possibleAnswers = [];
+window.total = 0;
+window.correct = 0;
+
+function loadQuestion() {
+    let number = Math.floor(Math.random() * 16);
+    let question = '';
+    let question2 = '';
+    if (Math.random() < 0.5) {
+        question += 'hex: ';
+        question += number.toString(16);
+        question2 = 'binary:';
+        window.possibleAnswers = [
+            number.toString(2).padStart(4, '0'),
+            number.toString(2),
+        ];
+    } else {
+        question += 'binary: ';
+        question += number.toString(2).padStart(4, '0');
+        question2 = 'hex:';
+        window.possibleAnswers = [
+            number.toString(16),
+            number.toString(16).toUpperCase(),
+        ];
+    }
+    document.getElementById('question').innerHTML = question;
+    document.getElementById('question2').innerHTML = question2;
+    document.getElementById('answer').value = '';
+    document.getElementById('stats').innerHTML = `${window.correct.toString(16)} / ${window.total.toString(16)}`;
+}
+
+function submitAnswer() {
+    let answer = document.getElementById('answer').value.trim();
+    if (window.possibleAnswers.includes(answer)) {
+        ++window.correct;
+    } else {
+        alert(`'${answer}' is incorrect. Expected ` + window.possibleAnswers[0] + '.');
+    }
+    ++window.total;
+    loadQuestion();
+}
+
+window.onload = () => {
+    loadQuestion();
+    document.getElementById('answer').addEventListener('keydown', e => {
+        if (e.key == "Enter") {
+            submitAnswer();
+        }
+    });
+};
+
+</script>
+
+</body>
+</html>
