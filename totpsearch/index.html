@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>TOTP search</title>
+</head>
+<body>
+<form>
+    <label for="secret">TOTP Secret</label>
+    <input type="text" id="secret">
+    <br>
+    <label for="code">Code</label>
+    <input type="text" id="code">
+    <br>
+    <label for="maxDistance">Max distance (hours)</label>
+    <input type="text" id="maxDistance" value="12">
+    <br>
+    <button type="button" onClick="calculate()">Calculate</button>
+</form>
+
+<!-- from https://github.com/jiangts/JS-OTP -->
+<script src="jsOTP.min.js"></script>
+
+<script src="search.js"></script>
+</body>
+</html>
