@@ -122,16 +122,20 @@
 
 <script>
 function formatVersionEntry(version, date) {
-	const dateStr = date.toString();
-	const dateDiff = Math.round(Temporal.Now.plainDateISO().until(date).total('days'));
-	const dateDiffStr = new Intl.RelativeTimeFormat([], { numeric: 'auto' }).format(dateDiff, 'days');
+	const earliestRelease = date.toZonedDateTime('UTC').withTimeZone(Temporal.Now.timeZoneId());
+	const releaseMidpoint = earliestRelease.add({ hours: 12 });
+	const latestRelease = earliestRelease.add({ hours: 23, minutes: 59, seconds: 59 });
 
-	const earliestRelease = date.toZonedDateTime('UTC');
-	const latestRelease = earliestRelease.withPlainTime('23:59:59');
-	const earliestReleaseStr = earliestRelease.withTimeZone(Temporal.Now.timeZoneId()).toLocaleString([], { dateStyle: 'medium', timeStyle: 'long' });
-	const latestReleaseStr = latestRelease.withTimeZone(Temporal.Now.timeZoneId()).toLocaleString([], { dateStyle: 'medium', timeStyle: 'long' });
+	const dateStr = date.toString();
+	const diff = Temporal.Now.zonedDateTimeISO().until(releaseMidpoint, { largestUnit: 'days', smallestUnit: 'seconds' });
+	const dateDiff = Temporal.Now.zonedDateTimeISO().until(releaseMidpoint, { largestUnit: 'days', smallestUnit: 'days' });
+	const dateDiffStr = new Intl.RelativeTimeFormat([], { numeric: 'auto' }).format(dateDiff.days, 'days');
+	const dateDiffLongStr = diff.abs().toLocaleString([], { style: 'long' });
+
+	const earliestReleaseStr = earliestRelease.toLocaleString([], { dateStyle: 'full', timeStyle: 'long' });
+	const latestReleaseStr = latestRelease.toLocaleString([], { dateStyle: 'full', timeStyle: 'long' });
 	const releaseRangeStr = `Release window: \n${earliestReleaseStr} to \n${latestReleaseStr}`;
-	return `<li>1.${version} - <span title="${releaseRangeStr}">${dateStr}</span> - ${dateDiffStr}</li>`;
+	return `<li>1.${version} - <span title="${releaseRangeStr}">${dateStr}</span> - <span title="approximately ${dateDiffLongStr}">${dateDiffStr}</span></li>`;
 }
 
 async function showCurrentReleaseInfo() {
