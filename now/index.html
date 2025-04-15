@@ -5,6 +5,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
+<script src="https://cdn.jsdelivr.net/npm/temporal-polyfill@0.3.0/global.min.js"
+	integrity="sha384-df2iQaZF4qu/OgVkNSZQqLfqm4saLMMEaHCH8tzdu0JcIZ4VR3Y22rvlq6W1HOjX" crossorigin="anonymous"></script>
+
 <title>Decimal Time</title>
 
 <style>
@@ -41,6 +44,12 @@ body {
 .hidden {
     display: none;
 }
+.progress {
+    text-align: center;
+}
+#progress-slider {
+    width: 100%;
+}
 </style>
 
 </head>
@@ -50,7 +59,7 @@ body {
     <h1 class="title">Decimal Time</h1>
 
     <h2 class="time">
-        <span id="current-year"></span>-<span id="current-month"></span>-<span id="current-day"></span>@<span id="current-beats"></span>:<span id="current-pulses"></span>
+        <span id="now"></span>
     </h1>
     <h3 id="local-times-header" class="local-times hidden">
         Local Times
@@ -78,13 +87,17 @@ body {
             id="updateLocalTimes()"
             value="Get local times from current location">
     </p>
+    <p class="progress">
+        <input id="progress-slider" type="range" min="0" max="1" step="0.001" />
+        <small id="progress-text"></small>
+    </p>
 </div>
 
 <script>
-
-// Each day is divided into 1000 beats, and each beat into 1000 pulses
+const MAX = 1000;
 
 let cache = {};
+let sliderManuallyAdjusted = false;
 function setContents(id, newValue, updateFn = null) {
     if (cache[id] == newValue) return;
     cache[id] = newValue;
@@ -96,30 +109,24 @@ function setContents(id, newValue, updateFn = null) {
 }
 
 function update() {
-    let d = new Date();
-    let beatsNum = (((d.getUTCMilliseconds() / 1000 + d.getUTCSeconds())
-        / 60 + d.getUTCMinutes())
-        / 60 + d.getUTCHours()) / 24 * 1000;
-    let date = {
-        year: d.getUTCFullYear(),
-        month: d.getUTCMonth() + 1,
-        day: d.getUTCDate(),
-        beats: beatsNum,
-    };
-    setContents('current-year', date.year);
-    let month = date.month.toString().padStart(2, '0');
-    setContents('current-month', month);
-    let day = date.day.toString().padStart(2, '0');
-    setContents('current-day', day);
-    // make sure not to round these values
-    let beats = Math.floor(date.beats).toString().padStart(3, '0');
-    setContents('current-beats', beats);
-    let pulses = Math.floor(date.beats * 1000 % 1000).toString().padStart(3, '0');
-    setContents('current-pulses', pulses);
+    const date = Temporal.Now.zonedDateTimeISO('UTC');
+    const fraction = (date.since(date.startOfDay()).total('hours') / 24 * MAX);
 
-    setContents('title',
-        `${date.year}-${month}-${day}@${beats}`,
-        val => document.title = val);
+    const s = `${date.year}-${date.month}-${date.day}\u2002${fraction.toLocaleString('en', { maximumFractionDigits: 3, minimumFractionDigits: 3 })}`;
+    setContents('now', s);
+
+    setContents('title', s, val => document.title = val);
+
+    if (!sliderManuallyAdjusted) {
+        document.getElementById('progress-slider').value = fraction / MAX;
+    }
+    let sliderValue = Math.round(document.getElementById('progress-slider').value * MAX);
+    if (sliderValue >= MAX) {
+        sliderValue = MAX - 1;
+    }
+    setContents('progress-text',
+        sliderValue.toLocaleString('en', { maximumFractionDigits: 0 }) + '\u2002/\u2002' +
+        Temporal.PlainTime.from('00:00').add({ minutes: Math.round(sliderValue / MAX * 24 * 60) }).toString({ smallestUnit: 'minute' }));
 
     window.requestAnimationFrame(update);
 }
@@ -128,13 +135,13 @@ function localTimeConv(lonDegrees, offset = 0) {
     if (lonDegrees < -180 || lonDegrees > 180) {
         throw new Error('longitude out of range');
     }
-    let res = lonDegrees / 360 * 1000;
+    let res = lonDegrees / 360 * MAX;
     res += offset;
-    while (res >= 1000) {
-        res -= 1000;
+    while (res >= MAX) {
+        res -= MAX;
     }
     while (res < 0) {
-        res += 1000;
+        res += MAX;
     }
     return res;
 }
@@ -142,12 +149,12 @@ function localTimeConv(lonDegrees, offset = 0) {
 function localTimes(lonDegrees) {
     let timeStr = offset => {
         // these values are rounded to the nearest integer
-        return '@' + localTimeConv(lonDegrees, offset).toFixed(0).padStart(3, '0');
+        return localTimeConv(lonDegrees, offset).toLocaleString('en', { maximumFractionDigits: 0 });;
     }
     setContents('local-midnight', timeStr(0));
-    setContents('local-morning', timeStr(250));
-    setContents('local-noon', timeStr(500));
-    setContents('local-evening', timeStr(750));
+    setContents('local-morning', timeStr(MAX * 0.25));
+    setContents('local-noon', timeStr(MAX * 0.5));
+    setContents('local-evening', timeStr(MAX * 0.75));
 }
 
 window.onload = () => {
@@ -158,6 +165,9 @@ window.onload = () => {
         } else {
             alert("Geolocation is not supported by this browser");
         }
+    });
+    document.getElementById('progress-slider').addEventListener('input', e => {
+        sliderManuallyAdjusted = true;
     });
     window.requestAnimationFrame(update);
 };
@@ -174,13 +184,13 @@ function tests() {
         if (!bool) throw new Error("Assertion failed");
     }
     assert(localTimeConv(0) == 0);
-    assert(localTimeConv(180) == 500);
-    assert(localTimeConv(90) == 250);
-    assert(localTimeConv(45) == 125);
-    assert(localTimeConv(-180) == 500);
-    assert(localTimeConv(-90) == 750);
-    assert(localTimeConv(-45) == 875);
-    assert(localTimeConv(-0.1) < 1000 && localTimeConv(-0.1) > 999);
+    assert(localTimeConv(180) == MAX * 0.5);
+    assert(localTimeConv(90) == MAX * 0.25);
+    assert(localTimeConv(45) == MAX * 0.125);
+    assert(localTimeConv(-180) == MAX * 0.5);
+    assert(localTimeConv(-90) == MAX * 0.75);
+    assert(localTimeConv(-45) == MAX * 0.875);
+    assert(localTimeConv(-0.1) < MAX && localTimeConv(-0.1) > MAX * 0.999);
 }
 
 </script>
