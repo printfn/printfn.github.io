@@ -17,11 +17,12 @@ td {
 </head>
 <body>
 <div class="container p-4">
-<h1>Timestamps in Different Programming Languages</h1>
+<h1>Everything you (n)ever wanted to know about dates!</h1>
 <p class="lead">
     Different programming languages handle date/time values quite differently.
-    This page aims to compare the different implementations and representations
-    to help you decide which type to use.
+    This page aims to compare different implementations,
+    representations and formats to help you decide how you want to handle
+    date/times in your code, and how to avoid common mistakes.
 </p>
 <p>
     There are four main ways of representing a timestamp:
@@ -399,12 +400,17 @@ td {
                 time zone):
             </p>
             <p>
-                This format can be potentially ambiguous due to offset
-                ambiguities, which are unavoidable in the real world.
-                If the time zone definition has changed since the timestamp
-                was serialized, you may find that the embedded offset
+                This is the preferred RFC 9557 format. When serializing zoned
+                timestamps you should always choose this format.
+            </p>
+            <p>
+                Nonetheless, this explicit offset + time zone format
+                can have offset ambiguities, which are unavoidable in the real
+                world. An offset ambiguity occurs if the time zone definition
+                has changed since the timestamp was originally serialized,
+                in which case you may find that the embedded offset
                 (<code class="Offset"></code> in this example) no longer
-                corresponds to the specified time zone.
+                matches the specified time zone.
             </p>
             <p>
                 For example, suppose you create a reminder in 2018 for
@@ -415,6 +421,23 @@ td {
                 reminder still fire at noon (keeping the local time), or
                 should it fire at 11:00 AM (keeping the exact time)?
             </p>
+            <p>
+                How to resolve offset ambiguities is always a case-by-case
+                decision, so it's not really possible to give a general answer
+                here. The JavaScript Temporal API will throw an exception by
+                default, but allows you to choose to prefer either UTC or the
+                local time. Resolving in favour of the local time can lead
+                to a further transition ambiguity though, so that will need to
+                be accounted for too.
+            </p>
+            <p>
+                While having to handle offset ambiguities may seem annoying,
+                they are inherent to how time zones are defined in the world.
+                No other timestamp format (other than RFC 9557 with explicit
+                offset + time zone) can even detect offset ambiguities, and will
+                instead silently choose one or another resolution, which can
+                lead to further bugs.
+            </p>
         </li>
         <li>
             <p>
@@ -424,7 +447,7 @@ td {
             <p>
                 This format is ambiguous to parse due to daylight saving
                 transitions. The same local time can correspond to zero, one
-                or more UTC times.
+                or more UTC times. This format is not recommended.
             </p>
         </li>
         <li>
@@ -435,7 +458,8 @@ td {
             <p>
                 This format can be parsed unambiguously, but in the case of
                 the time zone definition changing the result may not be what
-                is expected.
+                is expected. Since it makes it impossible to detect offset
+                ambiguities this format is also not recommended.
             </p>
         </li>
     </ul>
@@ -545,7 +569,10 @@ td {
     non-standard strings in unexpected ways. Ensure you only pass UTC
     timestamps when creating <code>Date</code> objects. Beware of
     <code>NaN</code> dates sneaking in to calculations, and always check for
-    that using <code>isNaN(date.getTime())</code>.
+    that using <code>isNaN(date.getTime())</code>. Many getters on the
+    <code>Date</code> type treat it as a local date and return values based
+    on local time, which may not be what you expect, so be very careful when
+    reading or writing these properties to ensure the behavior is correct.
 </p>
 <h4>C#</h4>
 <p>
@@ -661,6 +688,8 @@ td {
     local time is repeated. Code that does not handle this correctly can
     suffer from transition ambiguities.
 </p>
+<p class="PrevTransition"></p>
+<p class="NextTransition"></p>
 <h4 id="transition-ambiguity">Transition Ambiguity</h4>
 <p>
     During a time zone transition, any repeated local timestamp
@@ -684,7 +713,9 @@ td {
     abolishment of daylight saving), zoned date/time values become ambiguous.
     See the <a href="#offset-ambiguity-example">Brazil example above</a> for
     more details. Unlike transition ambiguities, offset ambiguities are
-    unavoidable.
+    somewhat unavoidable. Nonetheless, it's worth considering how to handle
+    offset ambiguities whenever you receive or parse a zoned date/time value
+    that could be ambiguous.
 </p>
 <h2>Bonus Section!</h2>
 <h4>Plain Dates and Plain Times</h4>
@@ -714,6 +745,9 @@ td {
             <code class="DurationJan1D"></code>: Duration since January 1
             (only days)
         </li>
+        <li>
+            <code class="DurationSinceLoad"></code>: Duration since you loaded this page
+        </li>
     </ul>
 </p>
 <p>
@@ -733,6 +767,31 @@ td {
 <div style="height: 5rem"></div>
 <script>
 let lastTime = '';
+function approxDuration(a, b) {
+    const d = a.until(b, { largestUnit: 'years', smallestUnit: 'millisecond' });
+    const f = new Intl.RelativeTimeFormat('en', { numeric: 'auto' });
+    if (d.years !== 0) {
+        return f.format(d.years, 'years');
+    }
+    if (d.months !== 0) {
+        return f.format(d.months, 'months');
+    }
+    if (d.days !== 0) {
+        return f.format(d.days, 'days');
+    }
+    if (d.hours !== 0) {
+        return f.format(d.hours, 'hours');
+    }
+    if (d.minutes !== 0) {
+        return f.format(d.minutes, 'minutes');
+    }
+    if (d.seconds !== 0) {
+        return f.format(d.seconds, 'seconds');
+    }
+    return 'now';
+}
+const load = Temporal.Now.zonedDateTimeISO().round({
+    smallestUnit: 'second', roundingMode: 'floor' });;
 function refresh() {
     const now = Temporal.Now.zonedDateTimeISO().round({
         smallestUnit: 'second', roundingMode: 'floor' });
@@ -755,6 +814,20 @@ function refresh() {
         { name: 'RFC7231UTC', value: new Date(now.epochMilliseconds).toUTCString() },
         { name: 'PlainDate', value: now.toPlainDate().toString() },
         { name: 'PlainTime', value: now.toPlainTime().toString() },
+        { name: 'PrevTransition', value: (() => {
+            const prev = now.getTimeZoneTransition('previous');
+            const prevDuration = prev ? approxDuration(now, prev) : '';
+            return `${prev ? `The previous time zone transition in your time zone was at <code>${prev.toString()}</code>,
+            which was ${prevDuration}.`
+            : 'There has never been a time zone transition in your time zone.'}`;
+        })(), },
+        { name: 'NextTransition', value: (() => {
+            const next = now.getTimeZoneTransition('next');
+            const nextDuration = next ? approxDuration(now, next) : '';
+            return `${next ? `The next time zone transition in your time zone will be at <code>${next.toString()}</code>,
+            which is ${nextDuration}.`
+            : 'There are no upcoming time zone transitions scheduled in your time zone.'}`;
+        })(), },
         { name: 'DurationJan1', value: now.since({
             year: now.year, month: 1, day: 1, timeZone: now.timeZoneId,
         }, { largestUnit: 'month' }).toString() },
@@ -764,6 +837,8 @@ function refresh() {
         { name: 'DurationJan1D', value: now.since({
             year: now.year, month: 1, day: 1, timeZone: now.timeZoneId,
         }, { largestUnit: 'days', smallestUnit: 'days' }).toString() },
+        { name: 'DurationSinceLoad', value: now.since(load,
+            { largestUnit: 'years' }).toString() },
     ];
     for (const { name, value } of map) {
         for (const element of document.getElementsByClassName(name)) {
