@@ -1,0 +1,786 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Timestamps</title>
+<script src="https://cdn.jsdelivr.net/npm/temporal-polyfill@0.3.0/global.min.js"
+	integrity="sha384-df2iQaZF4qu/OgVkNSZQqLfqm4saLMMEaHCH8tzdu0JcIZ4VR3Y22rvlq6W1HOjX" crossorigin="anonymous"></script>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.5/dist/css/bootstrap.min.css"
+	rel="stylesheet" integrity="sha384-SgOJa3DmI69IUzQ2PVdRZhwQ+dy64/BUtbMJw1MZ8t5HZApcHrRKUc4W0kG879m7" crossorigin="anonymous">
+<style>
+td {
+    word-break: normal;
+    overflow-wrap: anywhere;
+}
+</style>
+</head>
+<body>
+<div class="container p-4">
+<h1>Timestamps in Different Programming Languages</h1>
+<p class="lead">
+    Different programming languages handle date/time values quite differently.
+    This page aims to compare the different implementations and representations
+    to help you decide which type to use.
+</p>
+<p>
+    There are four main ways of representing a timestamp:
+</p>
+<h4><a href="#utc">UTC</a> Timestamp</h4>
+<p>
+    A UTC timestamp stores a unique point in time. It is usually represented as
+    a number of seconds since an epoch, such as the Unix epoch (midnight at the
+    beginning of 1 January 1970, UTC). UTC timestamps always represent time as
+    UTC, and thus do not embed any time zone information, though they can always
+    be converted to any time zone (e.g. when displaying to a user).
+</p>
+<p>
+    This is generally the preferred format for timestamps. Unless you have a
+    compelling need for a different format you should almost always use UTC
+    timestamps.
+</p>
+<p>
+    When serializing, the recommended format is
+    <a href="https://datatracker.ietf.org/doc/html/rfc3339">RFC 3339</a> /
+    <a href="https://www.iso.org/iso-8601-date-and-time-format.html">ISO 8601</a>.
+    UTC timestamps always have a “<code>Z</code>” suffix to indicate that the
+    timestamp is in UTC, but that we aren't storing any specific UTC offset.
+</p>
+<p>
+    The current UTC timestamp is <code class="Instant"></code>, equal to
+    <code class="UnixTime"></code> seconds since the Unix epoch.
+</p>
+<h4>Zoned Date/Time</h4>
+<p>
+    As the name implies, a zoned date/time represents a date and time with a
+    time zone. It is a combination of a UTC timestamp and a
+    <a href="#time-zone">time zone</a>.
+</p>
+<p>
+    Zoned date/times function as a bridge between an exact timestamp and a
+    wall-clock time. They can simultaneously represent an instant in history
+    (like a UTC timestamp), and a local, wall-clock time (like a plain
+    date/time). The stored time zone makes it easy to convert between the two
+    forms. Zoned date/times are the preferred format if a time zone is required.
+</p>
+<p>
+    Note that a time zone (e.g. <code class="TimeZoneName"></code>) is different
+    from a UTC offset (e.g. <code class="Offset"></code>). A single time zone
+    can change its offset at any point, such as during daylight saving
+    transitions. Zoned date/times always store a named time zone, not an offset.
+    Colloquially some people refer to daylight saving and standard time as being
+    two separate time zones, but this is not true.
+</p>
+<p>
+    Zoned date/times are the only values that can safely be used for date/time
+    arithmetic: adding or subtracting durations can be done correctly. Because
+    of daylight saving and other time zone offset transitions, you
+    <a href="#time-zone-transition">cannot assume</a>
+    that any given day is 24 hours long, and sometimes even an entire day can be
+    skipped from a local calendar, so e.g. adding 24 hours to a timestamp may
+    not be equal to the same time on the next day. No other date/time format
+    can correctly account for this.
+</p>
+<p>
+    Zoned date/time values are serialized using
+    <a href="https://datatracker.ietf.org/doc/html/rfc9557">RFC 9557</a>, which
+    extends the venerable
+    <a href="https://datatracker.ietf.org/doc/html/rfc3339">RFC 3339</a>
+    /
+    <a href="https://www.iso.org/iso-8601-date-and-time-format.html">ISO 8601</a>
+    format by storing the time zone in square brackets after the offset.
+</p>
+<p>
+    The current zoned date/time is <code class="ZonedDateTime"></code>.
+</p>
+<h4>Plain Date/Time</h4>
+<p>
+    A plain date/time value represents a time zone-unaware time point. Rather
+    than storing time in UTC, we instead store it in an implicit time zone; this
+    is usually local time.
+</p>
+<p>
+    Using this format is generally not recommended. Because we are not storing
+    a time zone, these values cannot be safely stored or sent over a network.
+    They also cannot be safely parsed or converted to another time zone due to
+    <a href="#transition-ambiguity">ambiguities</a> around daylight saving
+    transitions.
+</p>
+<p>
+    When using plain date/time values, you will need to be very careful to
+    always interpret them in the same time zone, particularly when serializing
+    or transmitting date/time values. It is almost always better to instead use
+    UTC timestamps (if the time zone is not important), or zoned timestamps (if
+    the local time zone is required). Parsing a plain date/time is dangerous
+    because most platforms will assume that the timestamp is in local time,
+    which is often not true. Converting a plain date/time to any other format is
+    <a href="#transition-ambiguity">potentially ambiguous</a>, since e.g. time
+    may be skipped or repeated when daylight saving starts or ends.
+</p>
+<p>
+    Formatted plain date/time values do not have any “<code>Z</code>” suffix or
+    other time zone information.
+</p>
+<p>
+    The current plain date/time is <code class="PlainDateTime"></code> (assuming
+    we are using the local time zone).
+</p>
+<h4>Offset Date/Time</h4>
+<p>
+    An offset date/time value represents a UTC timestamp and a time zone offset.
+    An offset represents the difference from UTC in hours/minutes, but does not
+    store the specific named time zone. For example, we would store the current
+    offset of “<code class="Offset"></code>” rather than the current time zone
+    “<code class="TimeZoneName"></code>”.
+</p>
+<p>
+    This format is also not recommended. While offset date/time values
+    can be safely converted to either UTC or to a local date/time value, it is
+    not possible to perform any arithmetic on these values. An offset date time
+    cannot account for any
+    <a href="#time-zone-transition">time zone transitions</a>. For example,
+    adding/subtracting days, weeks or months from an offset date/time is not
+    possible: any such calculations will return incorrect results due to
+    daylight saving or other time zone offset transitions. Thus it is almost
+    always preferred to use a zoned date/time value rather than an offset-based
+    one.
+</p>
+<p>
+    The current offset date/time is <code class="OffsetDateTime"></code>.
+</p>
+<h4>Comparison</h4>
+<table class="table table-striped table-bordered" style="table-layout: fixed;">
+    <thead>
+        <tr>
+            <th></th>
+            <th scope="col">UTC</th>
+            <th scope="col">Zoned</th>
+            <th scope="col">Plain</th>
+            <th scope="col">Offset</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+            <th scope="row">Rec&shy;om&shy;men&shy;ded?</th>
+            <td>✅ Yes</td>
+            <td>✅ Yes, if the original time zone or date/time arithmetic is required</td>
+            <td>❌ No: use UTC or a zoned date/time instead</td>
+            <td>❌ No: use a zoned date/time instead</td>
+        </tr>
+        <tr>
+            <th scope="row">Current Time&shy;stamp</th>
+            <td><code class="Instant"></code></td>
+            <td><code class="ZonedDateTime"></code></td>
+            <td><code class="PlainDateTime"></code></td>
+            <td><code class="OffsetDateTime"></code></td>
+        </tr>
+        <tr>
+            <th scope="row">Java&shy;Script</th>
+            <td>Date<sup>1</sup>, Temporal.<wbr>Instant</td>
+            <td>Temporal.<wbr>Zoned&shy;Date&shy;Time</td>
+            <td>Temporal.<wbr>Plain&shy;Date&shy;Time</td>
+            <td></td>
+        </tr>
+        <tr>
+            <th scope="row">C#</th>
+            <td>Date&shy;Time<sup>2</sup></td>
+            <td></td>
+            <td>Date&shy;Time<sup>2</sup></td>
+            <td>Date&shy;Time&shy;Offset</td>
+        </tr>
+        <tr>
+            <th scope="row">Post&shy;greSQL</th>
+            <td>timestamptz</td>
+            <td></td>
+            <td>timestamp</td>
+            <td></td>
+        </tr>
+        <tr>
+            <th scope="row">Go</th>
+            <td></td>
+            <td>time.Time</td>
+            <td></td>
+            <td></td>
+        </tr>
+        <tr>
+            <th scope="row">Protobuf</th>
+            <td>google.<wbr>protobuf.<wbr>Timestamp</td>
+            <td></td>
+            <td></td>
+            <td></td>
+        </tr>
+        <tr>
+            <th scope="row">Rust</th>
+            <td>std::<wbr>time::<wbr>System&shy;Time</td>
+            <td></td>
+            <td></td>
+            <td></td>
+        </tr>
+        <tr>
+            <th scope="row">Java</th>
+            <td>java.<wbr>time.<wbr>Instant</td>
+            <td>java.<wbr>time.<wbr>Zoned&shy;Date&shy;Time</td>
+            <td>java.<wbr>time.<wbr>Local&shy;Date&shy;Time</td>
+            <td>java.<wbr>time.<wbr>Offset&shy;Date&shy;Time</td>
+        </tr>
+        <tr>
+            <th scope="row">C (time.h)</th>
+            <td>time_t</td>
+            <td></td>
+            <td>struct tm<sup>3</sup></td>
+            <td></td>
+        </tr>
+        <tr>
+            <th scope="row">Swift</th>
+            <td>Date</td>
+            <td>Date&shy;Components</td>
+            <td></td>
+            <td></td>
+        </tr>
+        <tr>
+            <th scope="row">Python</th>
+            <td></td>
+            <td>datetime</td>
+            <td>datetime</td>
+            <td></td>
+        </tr>
+        <tr>
+            <th scope="row">Ruby</th>
+            <td></td>
+            <td>Time</td>
+            <td></td>
+            <td>Date&shy;Time</td>
+        </tr>
+        <tr>
+            <th scope="row">CBOR</th>
+            <td>Tag 0, Tag 1</td>
+            <td></td>
+            <td></td>
+            <td>Tag 0</td>
+        </tr>
+    </tbody>
+</table>
+<b>Notes:</b>
+<p class="small">
+    <sup>1</sup> JavaScript <code>Date</code> objects can store a timestamp of
+    <code>NaN</code>, which represents an invalid date. For example,
+    <code>new Date("foo").toString()</code> returns <code>"Invalid Date"</code>.
+    When using <code>Date</code> objects, it's recommended to check for this
+    using e.g. <code>isNaN(date.getTime())</code>.
+</p>
+<p class="small">
+    <sup>2</sup> C# <code>DateTime</code> objects have an associated
+    <code>DateTimeKind</code> of <code>UTC</code>, <code>Local</code> or
+    <code>Unspecified</code>. This determines whether the <code>DateTime</code>
+    object represents a UTC or plain (typically local) date and time. Even if
+    <code>DateTimeKind</code> is set to <code>UTC</code>, <code>DateTime</code>
+    values are always serialized to RFC 3339 with no time zone information. When
+    working with timestamps, you will need to make frequent use of
+    <code>DateTime.SpecifyKind()</code> and
+    <code>DateTime.ToUniversalTime()</code> to ensure the <code>Kind</code>
+    property is set to <code>UTC</code>, and manually serialize values to
+    include a <code>Z</code> suffix.
+</p>
+<p class="small">
+    <sup>3</sup> On some platforms, <code>struct tm</code> values may include
+    offset and/or time zone information. POSIX.1-2024 compatible platforms,
+    including glibc, musl and BSD store the UTC offset and the time zone in
+    <code>struct tm</code> values. macOS stores the UTC offset but not the
+    time zone. Windows stores neither.
+</p>
+<h2>Timestamp Conversions</h2>
+<p>
+    This table shows possible conversions between different timestamp formats.
+    Some conversions require a time zone to be specified, and some conversions
+    are ambiguous during daylight saving transitions due to some timestamps
+    being skipped or repeated.
+</p>
+<p>
+    This table assumes that you are converting one object type to another, and
+    does not mention additional problems you may encounter when parsing certain
+    timestamp formats. For example, converting a zoned date/time object to any
+    other type is always safe, but parsing a zoned date/time can be risky due
+    to <a href="#transition-ambiguity">transition ambiguities</a> and
+    <a href="#offset-ambiguity">offset ambiguities</a>. These parsing problems
+    are discussed further down.
+</p>
+<table class="table table-striped table-bordered" style="table-layout: fixed;">
+    <thead>
+        <tr>
+            <th></th>
+            <th scope="col">To UTC</th>
+            <th scope="col">To Zoned</th>
+            <th scope="col">To Plain</th>
+            <th scope="col">To Offset</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+            <th scope="row">From UTC</th>
+            <td>N/A</td>
+            <td>⚠️ time zone required</td>
+            <td>⚠️ time zone required</td>
+            <td>⚠️ time zone required</td>
+        </tr>
+        <tr>
+            <th scope="row">From Zoned</th>
+            <td>✅</td>
+            <td>N/A</td>
+            <td>✅</td>
+            <td>✅</td>
+        </tr>
+        <tr>
+            <th scope="row">From Plain</th>
+            <td>❌ time zone required, <a href="#transition-ambiguity">ambiguous during transitions</a></td>
+            <td>❌ time zone required, <a href="#transition-ambiguity">ambiguous during transitions</a></td>
+            <td>N/A</td>
+            <td>❌ time zone required, <a href="#transition-ambiguity">ambiguous during transitions</a></td>
+        </tr>
+        <tr>
+            <th scope="row">From Offset</th>
+            <td>✅</td>
+            <td>⚠️ time zone required</td>
+            <td>✅</td>
+            <td>N/A</td>
+        </tr>
+    </tbody>
+</table>
+<h2>Parsing</h2>
+<p>
+    Parsing timestamps can be quite dangerous due to different kinds of
+    ambiguities and assumptions. This section discusses common issues when
+    parsing different formats.
+</p>
+<h4>UTC timestamp formats</h4>
+<h5>RFC 3339 with <code>Z</code></h5>
+<p>
+    Parsing a UTC timestamp with a trailing <code>Z</code>, such as
+    <code class="Instant"></code> is generally safe. Almost all programming
+    languages can parse this format without any issues or ambiguities.
+</p>
+<h5>Epoch Time</h5>
+<p>
+    Epoch times like <code class="UnixTime"></code> are generally safe to parse,
+    though it is good to pay close attention to the specific epoch and unit:
+    <ul>
+        <li>
+            <code class="UnixTime"></code>: seconds since the Unix epoch
+        </li>
+        <li>
+            <code class="UnixTimeMs"></code>: milliseconds since the Unix epoch
+        </li>
+        <li>
+            <code class="UnixTimeUs"></code>: microseconds since the Unix epoch
+        </li>
+        <li>
+            <code class="UnixTimeNs"></code>: nanoseconds since the Unix epoch
+        </li>
+        <li>
+            <code class="2001Epoch"></code>: seconds since 1 January 2001
+            (sometimes used on macOS)
+        </li>
+        <li>
+            <code class="WindowsEpoch"></code>: 100-nanosecond intervals since
+            1 January 0001 (sometimes used on Windows)
+        </li>
+    </ul>
+    You'll also want to ensure your code is not affected by potential overflows,
+    such as the Year 2038 problem caused by Unix Time reaching a value of
+    2<sup>31</sup> (approx. 2.1 billion) seconds in 2038.
+</p>
+<h4>Zoned Date/Times (RFC 9557)</h4>
+<p>
+    There are three subtly different forms of zoned date/time formats you may
+    encounter:
+    <ul>
+        <li id="offset-ambiguity-example">
+            <p>
+                <code class="ZonedDateTime"></code> (note the explicit offset +
+                time zone):
+            </p>
+            <p>
+                This format can be potentially ambiguous due to offset
+                ambiguities, which are unavoidable in the real world.
+                If the time zone definition has changed since the timestamp
+                was serialized, you may find that the embedded offset
+                (<code class="Offset"></code> in this example) no longer
+                corresponds to the specified time zone.
+            </p>
+            <p>
+                For example, suppose you create a reminder in 2018 for
+                <code>2019-12-23T12:00:00-02:00[America/Sao_Paulo]</code>,
+                which is a daylight saving time in Brazil. Before that time
+                comes, Brazil abolished daylight saving in early 2019, so the
+                real UTC offset becomes <code>-03:00</code>. Should your
+                reminder still fire at noon (keeping the local time), or
+                should it fire at 11:00 AM (keeping the exact time)?
+            </p>
+        </li>
+        <li>
+            <p>
+                <code class="ZonedDateTimeNoOffset"></code> (note the lack of
+                offset):
+            </p>
+            <p>
+                This format is ambiguous to parse due to daylight saving
+                transitions. The same local time can correspond to zero, one
+                or more UTC times.
+            </p>
+        </li>
+        <li>
+            <p>
+                <code class="ZonedDateTimeUTC"></code> (note the
+                <code>Z</code>):
+            </p>
+            <p>
+                This format can be parsed unambiguously, but in the case of
+                the time zone definition changing the result may not be what
+                is expected.
+            </p>
+        </li>
+    </ul>
+</p>
+<h4>Plain Date/Time</h4>
+<p>
+    Parsing a plain date/time with no time zone information, such as
+    <code class="PlainDateTime"></code> is dangerous. Many programming languages
+    will automatically attempt to parse the value as if it was local time, even
+    if it is intended to be in a different time zone.
+</p>
+<p>
+    For example, parsing a plain date/time using
+    <code>new Date("<span class="PlainDateTime"></span>")</code> in
+    JavaScript will always parse it in the browser's local time zone. If the
+    value is instead intended to be in UTC or another time zone, the result
+    will be incorrect. You would have to append a “<code>Z</code>” manually
+    before parsing, or use a dedicated plain date/time type like
+    <code>Temporal.PlainDateTime</code>.
+</p>
+<p>
+    Even if you are intending to parse the value in the local time zone, you
+    will still have problems around daylight saving or other time zone
+    transitions. During daylight saving transitions, timestamps in local time
+    may be skipped or repeated. Attempting to parse a timestamp during a
+    transition to or from daylight saving is not possible without specifying
+    a manual disambiguation. For this reason, local date/time values should
+    almost always be avoided in favor of UTC or zoned timestamps.
+</p>
+<p>
+    Even creating and immediately parsing a local date/time value is not safe:
+    <code>new Date(Temporal.Now.plainDateTimeISO().toString())</code> will
+    return an incorrect current date during a transition, even though we
+    are immediately parsing the value we just created. Because code like that
+    will “mostly” work, but suddenly break once or twice a year, it can be
+    very hard to debug and should be avoided entirely by simply using UTC
+    timestamps. If we instead wrote
+    <code>new Date(Temporal.Now.instant().toString())</code>
+    (the <code>instant()</code> function creates a UTC timestamp rather than
+    a plain date/time), the code would always return the correct result.
+</p>
+<h4>Offset Date/Time</h4>
+<p>
+    Parsing an offset date/time such as <code class="OffsetDateTime"></code>
+    is also potentially dangerous. When parsing this format in a language
+    without a dedicated offset date/time type, the embedded time zone offset
+    is often lost and will instead be treated as either UTC or local time.
+</p>
+<p>
+    For example, the JavaScript code
+    <code class="language-javascript">new Date("<span class="OffsetDateTime"></span>")</code> will discard
+    the embedded time zone offset. Formatting the resulting Date object will
+    then always use local time, regardless of the original offset.
+</p>
+<p>
+    Offset date/time parsing also cannot account for changes to time zone
+    definitions, such as the Brazil example above. If an offset date/time had
+    been used, choosing a disambiguation or even detecting the issue would not
+    have been possible.
+</p>
+<p>
+    As mentioned above, offset date/times are not safe to use for any date/time
+    arithmetic, because they cannot represent daylight saving or other time zone
+    transitions. You will need to be careful to never add or subtract durations
+    like days, weeks or months from an offset date/time value as the result will
+    not always be correct.
+</p>
+<h4>Other formats</h4>
+<p>
+    While numerous other date formats exist, most do not support embedding any
+    time zone information, so the same caveats as for parsing RFC 3339 plain
+    date/time values (with no offset, “<code>Z</code>” or time zone) apply.
+    These formats suffer from the same ambiguities around time zone transitions
+    and are not generally safe to use.
+</p>
+<p>
+    Formats like
+    <a href="https://datatracker.ietf.org/doc/html/rfc7231#section-7.1.1.1">RFC 7231</a>
+    (e.g. <code class="RFC7231UTC"></code>) do embed time zone information, but
+    they offer no benefit over RFC 3339/9557. RFC 3339 is easier to parse,
+    less English-specific and generally more widely-used.
+</p>
+<h2>Summary and Recommendations</h2>
+<h4>Serialization</h4>
+<p>
+    Serialized timestamps should be in UTC whenever possible, using the RFC 3339
+    format <code class="Instant"></code> (with a trailing “<code>Z</code>”).
+</p>
+<p>
+    If a local time zone is required, such as for real-world events or for
+    doing date-time arithmetic, use the RFC 9557 format
+    <code class="ZonedDateTime"></code> (combined offset + time zone). Ensure
+    you are accounting for offset ambiguities when parsing, particularly for
+    future-dated events.
+</p>
+<h4>JavaScript</h4>
+<p>
+    Consider using the Temporal API if at all possible. You can find very
+    detailed documentation on
+    <a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Temporal">MDN</a>.
+    This API is carefully designed to avoid many common date/time-related bugs
+    that may happen with other APIs. Polyfill libraries are available on NPM.
+</p>
+<p>
+    You also have the option of using the <code>Date</code> type, which stores
+    UTC dates. Be careful with its parser as it has a tendency to parse
+    non-standard strings in unexpected ways. Ensure you only pass UTC
+    timestamps when creating <code>Date</code> objects. Beware of
+    <code>NaN</code> dates sneaking in to calculations, and always check for
+    that using <code>isNaN(date.getTime())</code>.
+</p>
+<h4>C#</h4>
+<p>
+    The <code>DateTime</code> type is very error-prone due to the way it can
+    represent either a local plain date/time or a UTC timestamp depending on its
+    <code>Kind</code> property. Make judicious use of
+    <code>DateTime.SpecifyKind()</code> and
+    <code>DateTime.ToUniversalTime()</code> to ensure the <code>Kind</code>
+    property is always set to <code>UTC</code>. Be careful when serializing
+    as C# will generally not include the “<code>Z</code>” suffix, which can
+    cause other languages to treat UTC dates as local dates. Parsing
+    <code>DateTime</code> values is also dangerous, as the <code>Kind</code>
+    property may need to be set manually.
+</p>
+<p>
+    You can also try using the <code>DateTimeOffset</code> type, which will
+    always include a UTC offset instead of falling back to a plain date/time.
+    However, because that type does not include any time zone information, it
+    also cannot be used for any date/time arithmetic. For date/time calculations
+    that are not in UTC you may have to find a third-party library.
+</p>
+<h4>PostgreSQL</h4>
+<p>
+    Always use the <code>timestamptz</code> (equivalently
+    <code>timestamp with time zone</code>) type. Its name is a misnomer as it
+    does not contain any timezone, but instead stores dates as UTC. Do not use
+    the <code>timestamp</code> (equivalently
+    <code>timestamp without time zone</code>) type, as it will use the server's
+    local time.
+</p>
+<h4>Go</h4>
+<p>
+    The <code>time.Time</code> in Go is always zoned, which can be
+    unexpected. Consider calling <code>.UTC()</code> or converting it to another
+    time zone before doing arithmetic, as it is easy to accidentally mix time
+    zones.
+</p>
+<h4>Protobuf</h4>
+<p>
+    The built-in <code>google.protobuf.Timestamp</code> is recommended for UTC
+    timestamps.
+</p>
+<h4>Rust</h4>
+<p>
+    <code>std::time::SystemTime</code> is safe to use for UTC timestamps, but it
+    has limited support for arithmetic or serialization. Consider using a
+    third-party library like <a href="https://crates.io/crates/jiff">jiff</a>
+    for more advanced functionality.
+</p>
+<h4>Java</h4>
+<p>
+    Java has a very comprehensive set of built-in date types.
+    <code>java.time.Instant</code> and <code>java.time.ZonedDateTime</code> are
+    safe to use. The other types are less commonly required but are also safe
+    to use if needed.
+</p>
+<h4>C</h4>
+<p>
+    When using <code>time_t</code>, ensure you are using 64-bit integers as
+    many C libraries still do not have 64-bit support enabled by default.
+    Be careful when using <code>struct tm</code> as its time zone behavior is
+    highly platform-dependent.
+</p>
+<h4>Swift</h4>
+<p>
+    The <code>Date</code> and <code>DateComponents</code> types are safe to use.
+</p>
+<h4>Python</h4>
+<p>
+    The <code>datetime</code> type is very easy to misuse as it does not
+    consistently use time zones. Consider using a third-party library if
+    possible.
+</p>
+<h2>Glossary</h2>
+<h4 id="time-zone">Time Zone</h4>
+<p>
+    An area where all clocks are always set to the same local time (i.e. have
+    the same UTC offset). Your current time zone is
+    <code class="TimeZoneName"></code>. Common time zones include
+    <code>America/New_York</code>, <code>Europe/London</code>,
+    <code>Europe/Paris</code>, <code>UTC</code> and <code>Asia/Tokyo</code>.
+    While <code>Europe/London</code> is equal to <code>UTC</code> in winter,
+    it follows daylight saving in summer and is thus a separate time zone from
+    <code>UTC</code>.
+</p>
+<h4 id="time-zone-offset">Time Zone Offset / UTC Offset</h4>
+<p>
+    An offset from UTC, in hours and minutes (and sometimes seconds or
+    fractional seconds). Your current time zone offset is
+    <code class="Offset"></code>. The time zone <code>UTC</code> always has
+    offset <code>+00:00</code>. Many time zones change their offset
+    regularly, such as for daylight saving. Time zones without daylight saving
+    will typically have the same offset, but may have changed offset in the
+    past. For example, <code>Asia/Tokyo</code> does not follow daylight saving
+    and last changed its offset in 1951.
+</p>
+<h4 id="utc">UTC</h4>
+<p>
+    Universal Coordinated Time, a standard time based on the prime meridian in
+    Greenwich, London. Formerly called Greenwich Mean Time. This page
+    intentionally ignores leap seconds, but to find out more about
+    the precise definition of UTC, I would recommend reading up on UT1, DUT1,
+    TAI and Terrestrial Time.
+</p>
+<h4 id="time-zone-transition">Time Zone Transition</h4>
+<p>
+    A time zone transition is when a time zone's UTC offset changes. Every time
+    daylight saving starts or ends, a time zone transition occurs. Time zone
+    transitions can also happen for other reasons, such as political changes
+    or religious events. While most changes add or subtract one hour,
+    there are sometimes bigger changes for various reasons. When a
+    UTC offset increases, local time is skipped; when the offset decreases,
+    local time is repeated. Code that does not handle this correctly can
+    suffer from transition ambiguities.
+</p>
+<h4 id="transition-ambiguity">Transition Ambiguity</h4>
+<p>
+    During a time zone transition, any repeated local timestamp
+    becomes ambiguous, as it is not clear if it happened before or after the
+    time zone transition. When local time is skipped, any timestamp with a
+    value during the transition is invalid as it never occurred, making it
+    similarly ambiguous. These two common ambiguities are called transition
+    ambiguities.
+</p>
+<p>
+    Transition ambiguities can easily be avoided by always storing timestamps
+    in UTC or with a time zone (i.e. in a zoned date/time), and never storing
+    plain date/time values. Any attempt to convert a plain date/time to a
+    zoned date/time or to a UTC timestamp will potentially suffer from
+    transition ambiguities. See the conversion table above.
+</p>
+<h4 id="offset-ambiguity">Offset Ambiguity</h4>
+<p>
+    When a time zone definition changes (i.e. not just a time zone transition
+    like the start or end of daylight saving, but the introduction or
+    abolishment of daylight saving), zoned date/time values become ambiguous.
+    See the <a href="#offset-ambiguity-example">Brazil example above</a> for
+    more details. Unlike transition ambiguities, offset ambiguities are
+    unavoidable.
+</p>
+<h2>Bonus Section!</h2>
+<h4>Plain Dates and Plain Times</h4>
+<p>
+    If you don't need a full timestamp but only want to store a date, or only
+    a time, you should use the RFC 3339 / ISO 8601 formats
+    <code class="PlainDate"></code> and <code class="PlainTime"></code>.
+    These are much easier to work with as there is no time zone to worry about,
+    and you won't encounter potential off-by-one errors near midnight, where a
+    standard timestamp might unexpectedly cross into the previous day.
+</p>
+<h4>Durations</h4>
+<p>
+    ISO 8601 also defines a standard syntax for durations:
+</p>
+<p>
+    <ul>
+        <li>
+            <code class="DurationJan1"></code>: Duration since January 1
+            (months, days, hours, minutes, etc.)
+        </li>
+        <li>
+            <code class="DurationJan1S"></code>: Duration since January 1
+            (only seconds)
+        </li>
+        <li>
+            <code class="DurationJan1D"></code>: Duration since January 1
+            (only days)
+        </li>
+    </ul>
+</p>
+<p>
+    Durations always start with <code>P</code>, followed by (optional) year,
+    month and day components. Then you can have a <code>T</code> before
+    including hours, minutes and seconds. The <code>T</code> is needed to
+    disambiguate months and minutes since both use an <code>M</code>.
+</p>
+<p>
+    One thing to be careful with when using durations is that while hours,
+    minutes and seconds always have a consistent length; days, weeks, months
+    and years do not. A duration of one day (<code>P1D</code>) is usually equal
+    to 24 hours (<code>PT24H</code>), but it can also be 23 hours, 25 hours
+    or even shorter or longer. Days of length 0 are also possible.
+</p>
+</div>
+<div style="height: 5rem"></div>
+<script>
+let lastTime = '';
+function refresh() {
+    const now = Temporal.Now.zonedDateTimeISO().round({
+        smallestUnit: 'second', roundingMode: 'floor' });
+    if (lastTime === now.toString()) return;
+    const map = [
+        { name: 'Instant', value: now.toInstant().toString() },
+        { name: 'UnixTime', value: now.epochMilliseconds / 1000 },
+        { name: 'UnixTimeMs', value: now.epochMilliseconds },
+        { name: 'UnixTimeUs', value: now.epochMilliseconds * 1000 },
+        { name: 'UnixTimeNs', value: now.epochMilliseconds * 1000 * 1000 },
+        { name: '2001Epoch', value: now.toInstant().since('2001-01-01T00Z').total('seconds') },
+        { name: 'WindowsEpoch', value: now.toInstant().since('0001-01-01T00Z').total('microseconds') * 10 },
+        { name: 'PlainDateTime', value: now.toPlainDateTime().toString() },
+        { name: 'OffsetDateTime', value: now.toInstant().toString({ timeZone: now }) },
+        { name: 'ZonedDateTime', value: now.toString() },
+        { name: 'ZonedDateTimeNoOffset', value: now.toString({ offset: 'never' }) },
+        { name: 'ZonedDateTimeUTC', value: `${now.toInstant().toString()}[${now.timeZoneId}]` },
+        { name: 'Offset', value: now.offset },
+        { name: 'TimeZoneName', value: now.timeZoneId },
+        { name: 'RFC7231UTC', value: new Date(now.epochMilliseconds).toUTCString() },
+        { name: 'PlainDate', value: now.toPlainDate().toString() },
+        { name: 'PlainTime', value: now.toPlainTime().toString() },
+        { name: 'DurationJan1', value: now.since({
+            year: now.year, month: 1, day: 1, timeZone: now.timeZoneId,
+        }, { largestUnit: 'month' }).toString() },
+        { name: 'DurationJan1S', value: now.since({
+            year: now.year, month: 1, day: 1, timeZone: now.timeZoneId,
+        }, { largestUnit: 'seconds' }).toString() },
+        { name: 'DurationJan1D', value: now.since({
+            year: now.year, month: 1, day: 1, timeZone: now.timeZoneId,
+        }, { largestUnit: 'days', smallestUnit: 'days' }).toString() },
+    ];
+    for (const { name, value } of map) {
+        for (const element of document.getElementsByClassName(name)) {
+            element.innerHTML = value;
+        }
+    }
+    lastTime = now.toString();
+}
+
+function loop() {
+    refresh();
+    requestAnimationFrame(loop);
+}
+
+window.onload = () => {
+    requestAnimationFrame(loop);
+};
+</script>
+</body>
+</html>
