@@ -8,7 +8,7 @@
 	margin: auto;
 	width: fit-content;
 }
-.line:hover, .current-line:hover {
+.line:hover, .current-line:hover, [data-ip]:not(:has([data-ip]:hover)):hover {
 	background-color: #666;
 }
 .current-line {
@@ -26,6 +26,9 @@
 [data-ip] {
 	cursor: pointer;
 }
+input[type=text] {
+	width: 100%
+}
 pre {
 	line-height: .9rem;
 	overflow: visible;
@@ -39,7 +42,7 @@ body {
 </head>
 <body>
 <div class="wrapper">
-	<label for="ip-input"><pre>Enter an IPv4 address (with optional CIDR range):</pre></label>
+	<label for="ip-input"><pre>Enter an IP address (with optional CIDR range):</pre></label>
 	<br>
 	<input type="text" id="ip-input" />
 	<br>
@@ -65,15 +68,138 @@ const specialUse = [
 	{ cidr: ['240.0.0.0/4'], description: 'reserved for future use (former class E)' },
 ];
 
+const ipv4Number = '(?:\\d|[1-9]\\d|1\\d\\d|2[0-4]\\d|25[0-5])';
 function parse4ToInt(ipv4Str) {
-	const number = '(\\d|[1-9]\\d|1\\d\\d|2[0-4]\\d|25[0-5])';
-	const matches = new RegExp(`^${number}\\.${number}\\.${number}\\.${number}(/(?:\\d|[12]\\d|3[0-2]))?$`).exec(ipv4Str);
+	const matches = new RegExp(`^(${ipv4Number})\\.(${ipv4Number})\\.(${ipv4Number})\\.(${ipv4Number})(/(?:\\d|[12]\\d|3[0-2]))?$`).exec(ipv4Str);
 	if (!matches) {
 		throw new Error(`'${ipv4Str}' is not an IPv4 address`);
 	}
 	const address = matches.slice(1, 5).map(n => BigInt(parseInt(n)));
 	const decimal = address[0] * 256n ** 3n + address[1] * 256n ** 2n + address[2] * 256n + address[3];
 	return [decimal, matches[5] ? parseInt(matches[5].substring(1)) : undefined];
+}
+
+function parse6ToInt(ipv6Str) {
+	let cidr = /([^/]*)\/(\d|[1-9]\d|1[01]\d|12[0-8])$/.exec(ipv6Str);
+	if (cidr) {
+		ipv6Str = cidr[1];
+		cidr = parseInt(cidr[2]);
+	}
+	let scope = /([^%]*)%([^/]+)$/.exec(ipv6Str);
+	if (scope) {
+		ipv6Str = scope[1];
+		scope = scope[2];
+	}
+	const trailingV4 = new RegExp(`(.*:)(${ipv4Number}\\.${ipv4Number}\\.${ipv4Number}\\.${ipv4Number})$`).exec(ipv6Str);
+	if (trailingV4) {
+		const [v4,] = parse4ToInt(trailingV4[2]);
+		ipv6Str = `${trailingV4[1]}${(v4 >> 16n).toString(16)}:${(v4 & 0xffffn).toString(16)}`;
+	}
+	if (ipv6Str.includes('::')) {
+		if ([...ipv6Str.matchAll(/:(?=:)/g)].length !== 1) {
+			throw new Error('IPv6 addresses cannot have more than one `::`');
+		}
+		let replacementStr = '0';
+		if (!/^::/.test(ipv6Str)) {
+			replacementStr = ':' + replacementStr;
+		}
+		if (!/::$/.test(ipv6Str)) {
+			replacementStr += ':';
+		}
+		while ([...ipv6Str.replace('::', replacementStr).matchAll(/:/g)].length < 7) {
+			replacementStr = replacementStr.replace('0', '0:0');
+		}
+		ipv6Str = ipv6Str.replace('::', replacementStr);
+	}
+	const groups = ipv6Str.split(':');
+	if (groups.length !== 8) {
+		throw new Error('IPv6 address has an incorrect number of groups');
+	}
+	if (groups.some(g => !/^[0-9a-fA-F]{1,4}$/.test(g))) {
+		throw new Error('each IPv6 group must have between 1 and 4 hex digits');
+	}
+	let value = 0n;
+	for (const g of groups.map(g => BigInt(parseInt(g, 16)))) {
+		value *= 0x10000n;
+		value += g;
+	}
+	return [value, scope ?? undefined, cidr ?? undefined];
+}
+
+function intTo6(ipInteger, format, html) {
+	if (ipInteger < 0n || ipInteger >= 2n ** 128n) {
+		throw new Error('out of range');
+	}
+	const groups = [];
+	let n = ipInteger;
+	for (let i = 0; i < 8; ++i) {
+		groups.splice(0, 0, n & 0xffffn);
+		n /= 0x10000n;
+	}
+	const strGroups = groups.map(n => n.toString(16));
+	if (format === 'long') {
+		return strGroups.join(':');
+	}
+	if (format === 'full') {
+		return strGroups.map(s => s.padStart(4, '0')).join(':');
+	}
+	const v4PrefixMask = 0xffff_ffff_ffff_ffff_ffff_ffff_0000_0000n;
+	const embedV4 = format !== 'nov4' && (
+		format === 'v4' ||
+		(ipInteger & v4PrefixMask) === 0xffff_0000_0000n ||
+		(ipInteger & v4PrefixMask) === 0xffff_0000_0000_0000n ||
+		(ipInteger & v4PrefixMask) === 0x0064_ff9b_0000_0000_0000_0000_0000_0000n);
+	let start = -1, end = 0;
+	if (embedV4) {
+		groups.splice(6, 2);
+	}
+	for (let run = groups.length; run >= 2; --run) {
+		let count = 0;
+		for (let i = 0; i < groups.length; ++i) {
+			const g = strGroups[i];
+			if (g !== '0') {
+				if (count === run) {
+					start = i - count;
+					end = i - 1;
+					break;
+				}
+				count = 0;
+			} else {
+				++count;
+			}
+		}
+		if (start !== -1) {
+			break;
+		}
+		if (count === run) {
+			start = groups.length - count;
+			end = groups.length - 1;
+			break;
+		}
+	}
+	let result = '';
+	for (let i = 0; i < groups.length; ++i) {
+		if (i === start && start !== end) {
+			result += '::';
+			i = end;
+			continue;
+		}
+		if (result.length !== 0 && result[result.length - 1] !== ':') {
+			result += ':';
+		}
+		result += strGroups[i];
+	}
+	if (embedV4) {
+		if (!result.endsWith(':')) {
+			result += ':';
+		}
+		let ipv4 = intTo4(ipInteger & 0xffff_ffffn);
+		if (html === 'html') {
+			ipv4 = `<span class="ip4" data-ip="${ipv4}">${ipv4}</span>`;
+		}
+		result += ipv4;
+	}
+	return result;
 }
 
 function cidr4(cidrValue) {
@@ -85,13 +211,7 @@ function cidr4(cidrValue) {
 	return [addressCount, subnetMask];
 }
 
-function parse4(ip) {
-	let decimal = 0n, cidrValue = 0;
-	try {
-		[decimal, cidrValue] = parse4ToInt(ip);
-	} catch (e) {
-		return [`<span style="color: #f44;">Error: ${e.message}</span>`];
-	}
+function parse4(decimal, cidrValue) {
 	const output = [`IPv4 address:     <span class="ip4">${intTo4(decimal)}</span> (value: ${decimal}, 0x${decimal.toString(16)})`];
 	let descriptionParts = [];
 	for (const assignment of specialUse) {
@@ -146,10 +266,14 @@ function parse4(ip) {
 		}
 		output.push('');
 	}
-	output.push(`IPv4-mapped IPv6 address:                    <span class="ip6">::ffff:${intTo4(decimal)}</span>`);
-	output.push(`IPv4-translated IPv6 address:                <span class="ip6">::ffff:0:${intTo4(decimal)}</span>`);
-	output.push(`NAT64 address (using well-known prefix):     <span class="ip6">64:ff9b::${intTo4(decimal)}</span>`);
-	output.push(`NAT64 address (using 64:ff9b:1::/48 prefix): <span class="ip6">64:ff9b:1:${(decimal >> 16n).toString(16)}:${((decimal >> 8n) % 256n).toString(16)}:${(decimal % 256n * 256n).toString(16)}::</span>`);
+	const mapped = `::ffff:${intTo4(decimal)}`;
+	output.push(`IPv4-mapped IPv6 address:                    <span class="ip6" data-ip="${mapped}">${mapped}</span>`);
+	const translated = `::ffff:0:${intTo4(decimal)}`;
+	output.push(`IPv4-translated IPv6 address:                <span class="ip6" data-ip="${translated}">${translated}</span>`);
+	const nat64 = `64:ff9b::${intTo4(decimal)}`;
+	output.push(`NAT64 address (using well-known prefix):     <span class="ip6" data-ip="${nat64}">${nat64}</span>`);
+	const nat64prefix2 = intTo6(parse6ToInt(`64:ff9b:1:${(decimal >> 16n).toString(16)}:${((decimal >> 8n) % 256n).toString(16)}:${(decimal % 256n * 256n).toString(16)}::`)[0]);
+	output.push(`NAT64 address (using 64:ff9b:1::/48 prefix): <span class="ip6" data-ip="${nat64prefix2}">${nat64prefix2}</span>`);
 	output.push('');
 	output.push('Subnets:');
 	let ips = [];
@@ -222,9 +346,57 @@ function parse4(ip) {
 	return output;
 }
 
-function update(ip) {
+function parse6(decimal, scope, cidrValue) {
+	const str = intTo6(decimal, '', 'html');
+	const suffix = `${scope !== undefined ? `%${scope}` : ''}${cidrValue !== undefined ? `/${cidrValue}` : ''}`;
+	const output = [`IPv6 address:              <span class="ip6">${str}</span>`];
+	const nov4Embedded = intTo6(decimal, 'nov4');
+	if (nov4Embedded !== str) {
+		output.push(`Non-IPv4-embedded address: <span class="ip6">${nov4Embedded}</span>`);
+	}
+	const longStr = intTo6(decimal, 'long');
+	if (longStr !== str) {
+		output.push(`Expanded address:          <span class="ip6">${longStr}</span>`);
+	}
+	const fullStr = intTo6(decimal, 'full');
+	if (fullStr !== str) {
+		output.push(`Fully expanded address:    <span class="ip6">${fullStr}</span>`);
+	}
+	const ipv4Embedded = intTo6(decimal, 'v4', 'html');
+	if (ipv4Embedded !== str) {
+		output.push(`IPv4-embedded address:     <span class="ip6">${ipv4Embedded}</span>`);
+	}
+	output.push(`Decimal:                   ${decimal}`);
+	output.push('');
+	if (decimal > 0n) {
+		output.push(`Previous address: <span class="ip6" data-ip="${intTo6(decimal - 1n)}${suffix}">${intTo6(decimal - 1n, null, 'html')}</span>`);
+	}
+	if (decimal < 2n ** 128n) {
+		output.push(`Next address:     <span class="ip6" data-ip="${intTo6(decimal + 1n)}${suffix}">${intTo6(decimal + 1n, null, 'html')}</span>`);
+	}
+	return output;
+}
+
+function parse(ip) {
 	ip = ip.trim();
-	document.getElementById('output').innerHTML = parse4(ip).join('<br>');
+	if (ip.length === 0) return '';
+	try {
+		if (ip.includes(':')) {
+			const [decimal, scope, cidrValue] = parse6ToInt(ip);
+			return parse6(decimal, scope, cidrValue).join('<br>');
+		}
+		if (ip.includes('.')) {
+			const [decimal, cidrValue] = parse4ToInt(ip);
+			return parse4(decimal, cidrValue).join('<br>');
+		}
+		throw new Error('Please enter a valid IP address')
+	} catch (e) {
+		return `<span style="color: #f44;">Error: ${e.message}</span>`;
+	}
+}
+
+function update(ip) {
+	document.getElementById('output').innerHTML = parse(ip);
 }
 
 function set(ip) {
