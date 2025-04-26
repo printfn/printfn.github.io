@@ -1,0 +1,231 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>IP Info</title>
+<style>
+.wrapper {
+	margin: auto;
+	width: fit-content;
+}
+.line:hover, .current-line:hover {
+	background-color: #666;
+}
+.current-line {
+	background-color: #333;
+}
+.secondary {
+	color: #888;
+}
+pre {
+	line-height: .9rem;
+	overflow: visible;
+}
+body {
+	background-color: rgb(28, 24, 32);
+	color: white;
+}
+</style>
+</head>
+<body>
+<div class="wrapper">
+	<label for="ip-input"><pre>Enter an IPv4 address (with optional CIDR range):</pre></label>
+	<br>
+	<input type="text" id="ip-input" />
+	<br>
+	<br>
+	<pre id="output"></b>
+</div>
+<script>
+function intTo4(ipInteger) {
+	return `${ipInteger >> 24n}.${(ipInteger >> 16n) % 256n}.${(ipInteger >> 8n) % 256n}.${ipInteger % 256n}`;
+}
+
+const specialUse = [
+	{ cidr: ['0.0.0.0/8'], description: 'current (local, "this") network' },
+	{ cidr: ['10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16'], description: 'used for local communications within a private network' },
+	{ cidr: ['100.64.0.0/10'], description: 'shared address space for communication between a service provider and subscribers when using carrier-grade NAT' },
+	{ cidr: ['127.0.0.0/8'], description: 'loopback address to the local host' },
+	{ cidr: ['169.254.0.0/16'], description: 'link-local addresses between two hosts on a single link when no IP is otherwise available' },
+	{ cidr: ['192.0.0.0/24'], description: 'allocated to IANA for IETF protocol assignments' },
+	{ cidr: ['192.0.2.0/24', '198.51.100.0/24', '203.0.113.0/24', '233.252.0.0/24'], description: 'used for documentation and examples' },
+	{ cidr: ['192.88.99.0/24'], description: 'reserved; formerly used for 6to4 relay' },
+	{ cidr: ['198.18.0.0/15'], description: 'used for benchmarking between two subnets' },
+	{ cidr: ['224.0.0.0/4'], description: 'used for multicast' },
+	{ cidr: ['240.0.0.0/4'], description: 'reserved for future use (former class E)' },
+];
+
+function parse4ToInt(ipv4Str) {
+	const number = '(\\d|[1-9]\\d|1\\d\\d|2[0-4]\\d|25[0-5])';
+	const matches = new RegExp(`^${number}\\.${number}\\.${number}\\.${number}(/(?:\\d|[12]\\d|3[0-2]))?$`).exec(ipv4Str);
+	if (!matches) {
+		throw new Error(`'${ipv4Str}' is not an IPv4 address`);
+	}
+	const address = matches.slice(1, 5).map(n => BigInt(parseInt(n)));
+	const decimal = address[0] * 256n ** 3n + address[1] * 256n ** 2n + address[2] * 256n + address[3];
+	return [decimal, matches[5] ? parseInt(matches[5].substring(1)) : undefined];
+}
+
+function cidr4(cidrValue) {
+	const addressCount = BigInt(2 ** (32 - cidrValue));
+	let subnetMask = 0xffffffffn;
+	for (let i = 0; i < 32 - cidrValue; ++i) {
+		subnetMask ^= 1n << BigInt(i);
+	}
+	return [addressCount, subnetMask];
+}
+
+function parse4(ip) {
+	let decimal = 0n, cidrValue = 0;
+	try {
+		[decimal, cidrValue] = parse4ToInt(ip);
+	} catch (e) {
+		return [`<span style="color: #f44;">Error: ${e.message}</span>`];
+	}
+	const output = [`IPv4 address: ${intTo4(decimal)} (value: ${decimal}, 0x${decimal.toString(16)})`];
+	let descriptionParts = [];
+	for (const assignment of specialUse) {
+		let matches = false;
+		for (const cidr of assignment.cidr) {
+			const [range, rangeCidr] = parse4ToInt(cidr);
+			const [addressCount, subnetMask] = cidr4(rangeCidr);
+			if (decimal >= (range & subnetMask) && decimal <= (range & subnetMask) + addressCount - 1n) {
+				matches = true;
+				break;
+			}
+		}
+		if (matches) {
+			descriptionParts.push(assignment.description);
+		}
+	}
+	if (decimal === 0xffffffffn) {
+		descriptionParts = ['reserved for the "limited broadcast" destination address']; // overlaps with class E CIDR
+	}
+	if (descriptionParts.length > 0) {
+		output.push(`This is a special-use address: ${descriptionParts.join('; ')}`)
+	}
+	if (decimal > 0n) {
+		output.push(`Previous address: ${intTo4(decimal - 1n)}`);
+	}
+	if (decimal < 0xffffffffn) {
+		output.push(`Next address: ${intTo4(decimal + 1n)}`);
+	}
+	output.push('');
+	if (cidrValue !== undefined) {
+		const [addressCount, subnetMask] = cidr4(cidrValue);
+		output.push(`This IPv4 /${cidrValue} subnet contains ${addressCount} (0x${addressCount.toString(16)}) addresses`);
+		output.push(`Total number of /${cidrValue} subnets in IPv4 space: ${(0x100000000n / addressCount)} (0x${(0x100000000n / addressCount).toString(16)})`);
+		const subnetMaskStr = intTo4(subnetMask);
+		output.push(`Subnet mask: ${subnetMaskStr} (value: ${subnetMask}, 0x${subnetMask.toString(16)})`);
+		const first = decimal & subnetMask;
+		const last = first + addressCount - 1n;
+		if (cidrValue <= 30 && decimal === first) {
+			output.push('This address is reserved as it is the first address in this<br>    subnet and is used to identify the subnet itself.');
+		}
+		if (cidrValue <= 30 && decimal === last) {
+			output.push('This is the last address in this subnet. It serves as the local broadcast address<br>    used for sending messages to all devices on the subnet simultaneously.')
+		}
+		output.push(`IPv4 addresses in this subnet: ${intTo4(first)} - ${intTo4(last)}`);
+		if (decimal - addressCount >= 0n) {
+			output.push(`Previous /${cidrValue} subnet: ${intTo4(first - addressCount)} - ${intTo4(first - 1n)}`);
+		}
+		if (first + addressCount * 2n <= 2n ** 32n) {
+			output.push(`Next /${cidrValue} subnet: ${intTo4(first + addressCount)} - ${intTo4(first + 2n * addressCount - 1n)}`);
+		}
+		output.push('');
+	}
+	output.push(`IPv4-mapped IPv6 address: ::ffff:${intTo4(decimal)}`);
+	output.push(`IPv4-translated IPv6 address: ::ffff:0:${intTo4(decimal)}`);
+	output.push(`NAT64 address (using well-known prefix): 64:ff9b::${intTo4(decimal)}`);
+	output.push(`NAT64 address (using 64:ff9b:1::/48 prefix): 64:ff9b:1:${(decimal >> 16n).toString(16)}:${((decimal >> 8n) % 256n).toString(16)}:${(decimal % 256n * 256n).toString(16)}::`);
+	output.push('');
+	output.push('Subnets:');
+	let ips = [];
+	for (let cidr = 0; cidr <= 32; ++cidr) {
+		const [addrCount, subnetMask] = cidr4(cidr);
+		const addr = decimal & subnetMask;
+		ips.push(addr);
+		ips.push(addr + addrCount - 1n);
+		if (addr - addrCount >= 0n) {
+			ips.push(addr - addrCount);
+			ips.push(addr - 1n);
+		}
+		if (addr + 2n * addrCount <= 2n ** 32n) {
+			ips.push(addr + addrCount);
+			ips.push(addr + 2n * addrCount - 1n);
+		}
+	}
+	ips = ips.sort((a, b) => a - b > 0 ? 1 : b === a ? 0 : -1).filter((n, i, a) => i === 0 || a[i-1] !== n)
+		.flatMap((n, i, a) => i === 0 || n - a[i-1] === 1n || n - a[i-1] > 4 ? [n] : [n - 3n, n - 2n, n - 1n, n].filter(n => n > a[i-1]));
+
+	const renderCidrArrows = (addr, line) => {
+		for (let cidr = 31; cidr >= 0; --cidr) {
+			const [addrCount, subnetMask] = cidr4(cidr);
+			const len = cidr.toString().length + 2;
+			let part = '';
+			if (addr == (decimal & subnetMask) ||
+				addr + addrCount == (decimal & subnetMask) ||
+				addr - addrCount == (decimal & subnetMask)) {
+
+				part = `/${cidr}`.padEnd(len, ' ');
+				part = `<span class="cidr ${addr == (decimal & subnetMask) ? '' : 'secondary'}">${part}</span>`;
+			} else if (
+				addr === (decimal & subnetMask) + addrCount - 1n ||
+				addr === (decimal & subnetMask) - 1n ||
+				addr === (decimal & subnetMask) + addrCount * 2n - 1n) {
+
+				part = ' < '.padEnd(len, ' ');
+				part = `<span class="vertical-line ${addr === (decimal & subnetMask) + addrCount - 1n ? '' : 'secondary'}">${part}</span>`;
+			} else if (addr < (decimal & subnetMask) + addrCount * 2n - 1n && addr + addrCount > (decimal & subnetMask)) {
+				part = ' | '.padEnd(len, ' ');
+				const isSecondary = !(addr < (decimal & subnetMask) + addrCount - 1n && addr > (decimal & subnetMask));
+				part = `<span class="arrow ${isSecondary ? 'secondary' : ''}">${part}</span>`;
+			}
+			if (part !== '') {
+				part = `<span title="/${cidr}: ${addrCount.toLocaleString('en')} (0x${addrCount.toString(16)}) addresses">${part}</span>`;
+			} else {
+				part = ''.padEnd(len, ' ');
+			}
+			line += part;
+		}
+		return line;
+	}
+
+	for (let i = 0; i < ips.length; ++i) {
+		const addr = ips[i];
+		if (i > 0 && addr - ips[i - 1] > 1) {
+			let line = `<span title="skipping ${addr - ips[i - 1] - 1n} addresses" class="ip-skip">      ...       </span>`;
+			line = renderCidrArrows(addr - 1n, line);
+			line = `<span onClick="set(${(addr + ips[i - 1]) / 2n + (addr + ips[i - 1]) % 2n}n)">${line}</span>`;
+			output.push(line);
+		}
+		let line = intTo4(addr).padEnd(15, ' ');
+		line = `${addr === decimal ? `<b>${line}</b>` : line} `;
+		line = `<span class="ip">${line}</span>`;
+		line = renderCidrArrows(addr, line);
+		line = `<span onClick="set(${addr}n)">${line}</span>`;
+		output.push(addr === decimal ? `<span class="current-line">${line}</span>` : line);
+	}
+	return output;
+}
+
+function update(ip) {
+	ip = ip.trim();
+	document.getElementById('output').innerHTML = parse4(ip).map(l => `<span class="line">${l}</span>`).join('<br>');
+}
+
+function set(ip) {
+	if (typeof ip === 'bigint') {
+		ip = intTo4(ip);
+	}
+	document.getElementById('ip-input').value = ip;
+	update(ip);
+}
+
+window.onload = () => {
+	document.getElementById('ip-input').addEventListener('input', e => update(e.currentTarget.value));
+	update(document.getElementById('ip-input').value);
+};
+</script>
+</body>
+</html>
