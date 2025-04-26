@@ -17,6 +17,15 @@
 .secondary {
 	color: #888;
 }
+.ip4 {
+	color: yellowgreen;
+}
+.ip6 {
+	color: rgb(231, 198, 35);
+}
+[data-ip] {
+	cursor: pointer;
+}
 pre {
 	line-height: .9rem;
 	overflow: visible;
@@ -24,6 +33,7 @@ pre {
 body {
 	background-color: rgb(28, 24, 32);
 	color: white;
+	font-weight: bold;
 }
 </style>
 </head>
@@ -82,7 +92,7 @@ function parse4(ip) {
 	} catch (e) {
 		return [`<span style="color: #f44;">Error: ${e.message}</span>`];
 	}
-	const output = [`IPv4 address: ${intTo4(decimal)} (value: ${decimal}, 0x${decimal.toString(16)})`];
+	const output = [`IPv4 address:     <span class="ip4">${intTo4(decimal)}</span> (value: ${decimal}, 0x${decimal.toString(16)})`];
 	let descriptionParts = [];
 	for (const assignment of specialUse) {
 		let matches = false;
@@ -105,10 +115,10 @@ function parse4(ip) {
 		output.push(`This is a special-use address: ${descriptionParts.join('; ')}`)
 	}
 	if (decimal > 0n) {
-		output.push(`Previous address: ${intTo4(decimal - 1n)}`);
+		output.push(`Previous address: <span class="ip4" data-ip="${intTo4(decimal - 1n)}${cidrValue !== undefined ? `/${cidrValue}` : ''}">${intTo4(decimal - 1n)}</span>`);
 	}
 	if (decimal < 0xffffffffn) {
-		output.push(`Next address: ${intTo4(decimal + 1n)}`);
+		output.push(`Next address:     <span class="ip4" data-ip="${intTo4(decimal + 1n)}${cidrValue !== undefined ? `/${cidrValue}` : ''}">${intTo4(decimal + 1n)}</span>`);
 	}
 	output.push('');
 	if (cidrValue !== undefined) {
@@ -125,19 +135,21 @@ function parse4(ip) {
 		if (cidrValue <= 30 && decimal === last) {
 			output.push('This is the last address in this subnet. It serves as the local broadcast address<br>    used for sending messages to all devices on the subnet simultaneously.')
 		}
-		output.push(`IPv4 addresses in this subnet: ${intTo4(first)} - ${intTo4(last)}`);
+		output.push('');
+		output.push(`IPv4 addresses in this subnet: <span class="ip4" data-ip="${intTo4(first)}/${cidrValue}">${intTo4(first)}</span> - <span class="ip4" data-ip="${intTo4(last)}/${cidrValue}">${intTo4(last)}</span>`);
+		output.push('');
 		if (decimal - addressCount >= 0n) {
-			output.push(`Previous /${cidrValue} subnet: ${intTo4(first - addressCount)} - ${intTo4(first - 1n)}`);
+			output.push(`Previous /${cidrValue} subnet: <span class="ip4" data-ip="${intTo4(first - addressCount)}/${cidrValue}">${intTo4(first - addressCount).padEnd(15, ' ')}</span> - <span class="ip4" data-ip="${intTo4(first - 1n)}/${cidrValue}">${intTo4(first - 1n)}</span>`);
 		}
 		if (first + addressCount * 2n <= 2n ** 32n) {
-			output.push(`Next /${cidrValue} subnet: ${intTo4(first + addressCount)} - ${intTo4(first + 2n * addressCount - 1n)}`);
+			output.push(`Next /${cidrValue} subnet:     <span class="ip4" data-ip="${intTo4(first + addressCount)}/${cidrValue}">${intTo4(first + addressCount).padEnd(15, ' ')}</span> - <span class="ip4" data-ip="${intTo4(last + addressCount)}/${cidrValue}">${intTo4(last + addressCount)}</span>`);
 		}
 		output.push('');
 	}
-	output.push(`IPv4-mapped IPv6 address: ::ffff:${intTo4(decimal)}`);
-	output.push(`IPv4-translated IPv6 address: ::ffff:0:${intTo4(decimal)}`);
-	output.push(`NAT64 address (using well-known prefix): 64:ff9b::${intTo4(decimal)}`);
-	output.push(`NAT64 address (using 64:ff9b:1::/48 prefix): 64:ff9b:1:${(decimal >> 16n).toString(16)}:${((decimal >> 8n) % 256n).toString(16)}:${(decimal % 256n * 256n).toString(16)}::`);
+	output.push(`IPv4-mapped IPv6 address:                    <span class="ip6">::ffff:${intTo4(decimal)}</span>`);
+	output.push(`IPv4-translated IPv6 address:                <span class="ip6">::ffff:0:${intTo4(decimal)}</span>`);
+	output.push(`NAT64 address (using well-known prefix):     <span class="ip6">64:ff9b::${intTo4(decimal)}</span>`);
+	output.push(`NAT64 address (using 64:ff9b:1::/48 prefix): <span class="ip6">64:ff9b:1:${(decimal >> 16n).toString(16)}:${((decimal >> 8n) % 256n).toString(16)}:${(decimal % 256n * 256n).toString(16)}::</span>`);
 	output.push('');
 	output.push('Subnets:');
 	let ips = [];
@@ -182,7 +194,7 @@ function parse4(ip) {
 				part = `<span class="arrow ${isSecondary ? 'secondary' : ''}">${part}</span>`;
 			}
 			if (part !== '') {
-				part = `<span title="/${cidr}: ${addrCount.toLocaleString('en')} (0x${addrCount.toString(16)}) addresses">${part}</span>`;
+				part = `<span title="/${cidr}: ${addrCount.toLocaleString('en')} (0x${addrCount.toString(16)}) addresses" data-ip="${intTo4(addr)}/${cidr}">${part}</span>`;
 			} else {
 				part = ''.padEnd(len, ' ');
 			}
@@ -196,14 +208,15 @@ function parse4(ip) {
 		if (i > 0 && addr - ips[i - 1] > 1) {
 			let line = `<span title="skipping ${addr - ips[i - 1] - 1n} addresses" class="ip-skip">      ...       </span>`;
 			line = renderCidrArrows(addr - 1n, line);
-			line = `<span onClick="set(${(addr + ips[i - 1]) / 2n + (addr + ips[i - 1]) % 2n}n)">${line}</span>`;
+			line = `<span class="line" data-ip="${intTo4((addr + ips[i - 1]) / 2n + (addr + ips[i - 1]) % 2n)}">${line}</span>`;
 			output.push(line);
 		}
 		let line = intTo4(addr).padEnd(15, ' ');
 		line = `${addr === decimal ? `<b>${line}</b>` : line} `;
-		line = `<span class="ip">${line}</span>`;
+		line = `<span class="ip4">${line}</span>`;
 		line = renderCidrArrows(addr, line);
-		line = `<span onClick="set(${addr}n)">${line}</span>`;
+		line = `<span data-ip="${intTo4(addr)}${cidrValue !== undefined ? `/${cidrValue}` : ''}">${line}</span>`;
+		line = `<span class="line">${line}</span>`;
 		output.push(addr === decimal ? `<span class="current-line">${line}</span>` : line);
 	}
 	return output;
@@ -211,20 +224,32 @@ function parse4(ip) {
 
 function update(ip) {
 	ip = ip.trim();
-	document.getElementById('output').innerHTML = parse4(ip).map(l => `<span class="line">${l}</span>`).join('<br>');
+	document.getElementById('output').innerHTML = parse4(ip).join('<br>');
 }
 
 function set(ip) {
-	if (typeof ip === 'bigint') {
-		ip = intTo4(ip);
-	}
 	document.getElementById('ip-input').value = ip;
 	update(ip);
 }
 
 window.onload = () => {
 	document.getElementById('ip-input').addEventListener('input', e => update(e.currentTarget.value));
-	update(document.getElementById('ip-input').value);
+	document.body.addEventListener('click', e => {
+		let element = e.target;
+		do {
+			const ip = element.attributes['data-ip']?.value;
+			if (ip) {
+				set(ip);
+				break;
+			}
+			element = element.parentElement;
+		} while (element);
+	});
+	if (!document.getElementById('ip-input').value) {
+		set('127.0.0.1');
+	} else {
+		update(document.getElementById('ip-input').value);
+	}
 };
 </script>
 </body>
