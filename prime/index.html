@@ -1,0 +1,128 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Prime Number Game</title>
+<style>
+body {
+	font-family: sans-serif;
+	background-color: #d7c0ff;
+}
+#border {
+	border: 1px solid black;
+	padding: 1rem;
+	max-width: 30rem;
+	text-align: center;
+	margin: 2rem auto;
+	background-color: #c7a7ff;
+}
+</style>
+</head>
+<body>
+<div id="border">
+	<h1>Prime Number Game</h1>
+	<h2><span id="number"></span></h2>
+	<button id="button">Click!</button>
+	<p><small id="seconds"></small></p>
+	<button id="new-game">New Game</button>
+</div>
+<script src='https://cdn.jsdelivr.net/npm/temporal-polyfill@0.3.0/global.min.js'></script>
+<script>
+let state = null;
+function start(gameDuration) {
+	if (gameDuration === 0) {
+		gameDuration = undefined;
+	}
+	state = {
+		number: 0n,
+		numberAt: Temporal.Now.instant(),
+		gameStart: Temporal.Now.instant(),
+		timeout: null,
+		gameDuration,
+	};
+	render();
+	state.timeout = setTimeout(render, 1000);
+}
+function getRemainingTime() {
+	return Math.max(0, Math.ceil(Temporal.Now.instant().until(state.gameStart.add({ seconds: state.gameDuration })).total('seconds')));
+}
+function getNumberNow() {
+	return state.number + BigInt(Math.floor(Math.min(
+		state.numberAt.until(Temporal.Now.instant()).total('seconds'),
+		state.gameDuration === undefined ? 1e100 : state.numberAt.until(state.gameStart.add({ seconds: state.gameDuration })).total('seconds')
+	)));
+}
+function nextNumber(n) {
+	if (n < 2n) return 0n;
+	let result = 2n * n;
+	for (let i = 2n; i * i <= n; ++i) {
+		if (n % i === 0n) {
+			result = i;
+		}
+	}
+	return result;
+}
+function render() {
+	let disableButton = false;
+	if (!state) {
+		document.getElementById('number').innerHTML = '';
+		disableButton = true;
+	} else {
+		const numberNow = getNumberNow();
+		document.getElementById('number').innerHTML = `Score: ${numberNow.toLocaleString()}`;
+		if (state.gameDuration === undefined) {
+			const elapsedTime = Math.floor(state.gameStart.until(Temporal.Now.instant()).total('seconds'));
+			document.getElementById('seconds').innerHTML = `Elapsed Time: ${elapsedTime} second${elapsedTime === 1 ? '' : 's'}`;
+		} else {
+			const remainingTime = getRemainingTime();
+			document.getElementById('seconds').innerHTML = `Remaining Time: ${remainingTime} second${remainingTime === 1 ? '' : 's'}`;
+			if (remainingTime === 0) {
+				disableButton = true;
+			}
+		}
+	}
+	if (disableButton) {
+		document.getElementById('button').setAttribute('disabled', 'disabled');
+	} else {
+		document.getElementById('button').removeAttribute('disabled');
+	}
+	if (state) {
+		state.timeout = setTimeout(render, Math.min(
+			1000 - Math.floor(state.numberAt.until(Temporal.Now.instant()).total('milliseconds')) % 1000,
+			1000 - Math.floor(state.gameStart.until(Temporal.Now.instant()).total('milliseconds')) % 1000));
+	}
+}
+window.onload = () => {
+	document.getElementById('button').addEventListener('click', () => {
+		if (!state || state.gameDuration !== undefined && getRemainingTime() === 0) {
+			return;
+		}
+		const numberNow = getNumberNow();
+		state.number = nextNumber(numberNow);
+		state.numberAt = Temporal.Now.instant().subtract({ milliseconds: 500 });
+		clearTimeout(state.timeout);
+		render();
+	});
+	document.getElementById('new-game').addEventListener('click', () => {
+		let limit = prompt('Time limit (leave blank for no limit)', '');
+		if (limit === null) {
+			return;
+		}
+		limit = limit.trim();
+		if (limit === '') {
+			start(undefined);
+			return;
+		}
+		if (!/^\d{1,11}/.test(limit)) {
+			alert('Please enter a valid number (or leave it blank)');
+			return;
+		}
+		start(parseInt(limit));
+	});
+	render();
+	start(undefined);
+}
+</script>
+</body>
+</html>
