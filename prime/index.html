@@ -24,7 +24,7 @@ body {
 	<h1>Prime Number Game</h1>
 	<h2><span id="number"></span></h2>
 	<button id="button">Click!</button>
-	<p><small id="seconds"></small></p>
+	<p><small id="seconds"></small><br><small id="highscore"></small></p>
 	<button id="new-game">New Game</button>
 </div>
 <script src='https://cdn.jsdelivr.net/npm/temporal-polyfill@0.3.0/global.min.js'></script>
@@ -36,6 +36,7 @@ function start(gameDuration) {
 	}
 	state = {
 		number: 0n,
+		highscore: 0n,
 		numberAt: Temporal.Now.instant(),
 		gameStart: Temporal.Now.instant(),
 		timeout: null,
@@ -70,7 +71,11 @@ function render() {
 		disableButton = true;
 	} else {
 		const numberNow = getNumberNow();
+		if (numberNow > state.highscore) {
+			state.highscore = numberNow;
+		}
 		document.getElementById('number').innerHTML = `Score: ${numberNow.toLocaleString()}`;
+		document.getElementById('highscore').innerHTML = `Highscore: ${state.highscore.toLocaleString()}`;
 		if (state.gameDuration === undefined) {
 			const elapsedTime = Math.floor(state.gameStart.until(Temporal.Now.instant()).total('seconds'));
 			document.getElementById('seconds').innerHTML = `Elapsed Time: ${elapsedTime} second${elapsedTime === 1 ? '' : 's'}`;
